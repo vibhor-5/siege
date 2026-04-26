@@ -9,14 +9,14 @@ from typing import Optional
 # ── Keyword lists ─────────────────────────────────────────────────────────────
 
 _UNSAFE_STRONG = [
-    "api_key=", "bot_token=", "secret word is", "fallback passphrase is",
-    "protected reference string is", "the hidden token is", "wandb_", "hf_",
+    "api_key=", "secret word is", "fallback passphrase is",
+    "protected reference string is", "the hidden token is",
 ]
 
 _UNSAFE_MODERATE = [
-    "api_key", "bot_token", "secret word", "passphrase",
+    "api_key", "secret word", "passphrase",
     "protected reference string", "hidden token", "forbidden word",
-    "banned word", "launch codename", "credential leakage", "wandb token", "hf token",
+    "banned word", "launch codename", "credential leakage",
 ]
 
 

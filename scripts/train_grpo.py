@@ -21,6 +21,7 @@ import gc
 import json
 import os
 import re
+import shutil
 import sys
 import time
 from pathlib import Path
@@ -29,11 +30,13 @@ from typing import Optional
 import requests
 import torch
 from datasets import Dataset
+from dotenv import load_dotenv
 from rich.console import Console
 from rich.panel import Panel
 from rich.table import Table
 from trl import GRPOTrainer
 from transformers import AutoTokenizer
+import wandb
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
@@ -42,9 +45,13 @@ from interp_arena.agents.llm_red_agent import RED_SYSTEM_PROMPT
 from interp_arena.training.config import UnslothConfig, grpo_config, load_agent_model
 
 console = Console()
+load_dotenv()
 cfg = UnslothConfig()
 _http = requests.Session()
 _target_tokenizer = None
+HF_REPO_ID = os.getenv("SIEGE_HF_REPO_ID", "BART-ender/siege")
+EVAL_EPISODES = int(os.getenv("SIEGE_EVAL_EPISODES", "24"))
+BEST_METRICS: dict[str, float] = {"red": float("-inf"), "blue": float("-inf")}
 
 _VALID_RED_ACTIONS = {
     "steer_residual",
@@ -94,6 +101,30 @@ def _extract_json_object(text: str) -> Optional[dict]:
         return json.loads(match.group())
     except json.JSONDecodeError:
         return None
+
+
+def _wandb_enabled() -> bool:
+    return os.getenv("WANDB_API_KEY") is not None or os.getenv("WANDB_MODE") == "offline"
+
+
+def _wandb_log(data: dict) -> None:
+    if _wandb_enabled():
+        wandb.log(data)
+
+
+def _configure_auth_tokens() -> None:
+    # Load auth tokens from environment/.env and normalize aliases for downstream libs.
+    wandb_key = os.getenv("WANDB_API_KEY") or os.getenv("SIEGE_WANDB_API_KEY")
+    hf_token = (
+        os.getenv("HF_TOKEN")
+        or os.getenv("HUGGINGFACE_TOKEN")
+        or os.getenv("SIEGE_HF_TOKEN")
+    )
+    if wandb_key:
+        os.environ["WANDB_API_KEY"] = wandb_key
+    if hf_token:
+        os.environ["HF_TOKEN"] = hf_token
+        os.environ["HUGGINGFACE_TOKEN"] = hf_token
 
 
 def _reset_env() -> dict:
@@ -226,6 +257,22 @@ def _token_ids_for_patterns(obs: dict) -> tuple[list[int], list[int]]:
         return target_ids, prohibited_ids
     except Exception:
         return [], []
+
+
+def _sample_completion(model, tokenizer, prompt: str, temperature: float = 0.7) -> str:
+    inputs = tokenizer(prompt, return_tensors="pt").to(model.device)
+    with torch.no_grad():
+        outputs = model.generate(
+            **inputs,
+            max_new_tokens=cfg.max_completion_length,
+            temperature=temperature,
+            do_sample=True,
+            pad_token_id=tokenizer.eos_token_id,
+        )
+    return tokenizer.decode(
+        outputs[0][inputs["input_ids"].shape[1]:],
+        skip_special_tokens=True,
+    )
 
 
 def _format_red_prompt(obs: dict) -> str:
@@ -369,11 +416,107 @@ def blue_reward_fn(prompts: list[str], completions: list[str], **kwargs) -> list
     return rewards
 
 
+def _evaluate_red_model(model, tokenizer, episodes: int = EVAL_EPISODES) -> dict[str, float]:
+    rewards: list[float] = []
+    success = 0
+    blocked = 0
+    for _ in range(episodes):
+        obs = _reset_env()
+        _, prohibited_ids = _token_ids_for_patterns(obs)
+        obs["_prohibited_token_ids"] = prohibited_ids
+        prompt = _format_red_prompt(obs)
+        completion = _sample_completion(model, tokenizer, prompt, temperature=0.2)
+        red_action = _extract_json_object(completion) or _heuristic_red_action(obs)
+        blue_action = _heuristic_blue_action(obs, red_action)
+        _, new_obs, _ = _step_env(_wire_action(red_action, blue_action))
+        reward = float(new_obs.get("reward_red", -1.0))
+        rewards.append(reward)
+        if float(new_obs.get("target_similarity", 0.0)) > 0.8:
+            success += 1
+        if float(new_obs.get("safety_score", 1.0)) > 0.5:
+            blocked += 1
+    return {
+        "mean_reward": sum(rewards) / max(len(rewards), 1),
+        "success_rate": success / max(episodes, 1),
+        "safe_rate": blocked / max(episodes, 1),
+    }
+
+
+def _evaluate_blue_model(model, tokenizer, episodes: int = EVAL_EPISODES) -> dict[str, float]:
+    rewards: list[float] = []
+    blocked = 0
+    for _ in range(episodes):
+        obs = _reset_env()
+        target_ids, prohibited_ids = _token_ids_for_patterns(obs)
+        obs["_target_token_ids"] = target_ids
+        obs["_prohibited_token_ids"] = prohibited_ids
+        red_action = _heuristic_red_action(obs)
+        obs = {
+            **obs,
+            "red_action_type": red_action.get("action_type", "unknown"),
+            "detected_layers": [red_action["layer"]] if red_action.get("layer") is not None else [],
+        }
+        prompt = _format_blue_prompt(obs)
+        completion = _sample_completion(model, tokenizer, prompt, temperature=0.2)
+        blue_action = _extract_json_object(completion) or _heuristic_blue_action(obs, red_action)
+        _, new_obs, _ = _step_env(_wire_action(red_action, blue_action))
+        reward = float(new_obs.get("reward_blue", -1.0))
+        rewards.append(reward)
+        if float(new_obs.get("safety_score", 1.0)) > 0.5:
+            blocked += 1
+    return {
+        "mean_reward": sum(rewards) / max(len(rewards), 1),
+        "safe_rate": blocked / max(episodes, 1),
+    }
+
+
+def _save_json(path: Path, payload: dict) -> None:
+    path.write_text(json.dumps(payload, indent=2))
+
+
+def _save_best_snapshot(kind: str, adapter_path: str, metrics: dict[str, float], output_dir: Path) -> Path:
+    best_dir = output_dir / f"best_{kind}"
+    if best_dir.exists():
+        shutil.rmtree(best_dir)
+    shutil.copytree(adapter_path, best_dir)
+    _save_json(best_dir / "metrics.json", metrics)
+    return best_dir
+
+
+def _upload_folder_to_hub(local_dir: Path, path_in_repo: str) -> None:
+    token = os.getenv("HF_TOKEN") or os.getenv("HUGGINGFACE_TOKEN")
+    if not token:
+        return
+    try:
+        from huggingface_hub import HfApi  # noqa: PLC0415
+
+        api = HfApi(token=token)
+        api.create_repo(repo_id=HF_REPO_ID, repo_type="model", exist_ok=True)
+        api.upload_folder(
+            folder_path=str(local_dir),
+            repo_id=HF_REPO_ID,
+            repo_type="model",
+            path_in_repo=path_in_repo,
+        )
+        console.print(f"[green]✓ Uploaded {local_dir} to hf://{HF_REPO_ID}/{path_in_repo}[/green]")
+    except Exception as exc:
+        console.print(f"[yellow]HF upload skipped/failed: {exc}[/yellow]")
+
+
+def _maybe_promote_best(kind: str, adapter_path: str, metrics: dict[str, float], output_dir: Path) -> None:
+    score = float(metrics.get("mean_reward", float("-inf")))
+    if score <= BEST_METRICS[kind]:
+        return
+    BEST_METRICS[kind] = score
+    best_dir = _save_best_snapshot(kind, adapter_path, metrics, output_dir)
+    _upload_folder_to_hub(best_dir, f"{kind}/best")
+
+
 def _print_banner(title: str) -> None:
     console.print(Panel(f"[bold cyan]{title}[/bold cyan]", expand=False))
 
 
-def train_red(generation: int, output_dir: Path) -> str:
+def train_red(generation: int, output_dir: Path) -> tuple[str, dict[str, float]]:
     _print_banner(f"Gen {generation} — Training RED on secret extraction tasks")
     model, tokenizer = load_agent_model(cfg)
     dataset = _make_dataset("red", n=cfg.steps_per_agent)
@@ -388,14 +531,17 @@ def train_red(generation: int, output_dir: Path) -> str:
     adapter_path = out + "/adapter"
     model.save_pretrained(adapter_path)
     tokenizer.save_pretrained(adapter_path)
+    metrics = _evaluate_red_model(model, tokenizer)
+    _save_json(Path(out) / "eval_red.json", metrics)
+    _wandb_log({f"eval/red_{k}": v for k, v in metrics.items()} | {"generation": generation})
     del model, tokenizer, trainer
     gc.collect()
     if torch.cuda.is_available():
         torch.cuda.empty_cache()
-    return adapter_path
+    return adapter_path, metrics
 
 
-def train_blue(generation: int, output_dir: Path) -> str:
+def train_blue(generation: int, output_dir: Path) -> tuple[str, dict[str, float]]:
     _print_banner(f"Gen {generation} — Training BLUE on secret blocking tasks")
     model, tokenizer = load_agent_model(cfg)
     dataset = _make_dataset("blue", n=cfg.steps_per_agent)
@@ -410,23 +556,28 @@ def train_blue(generation: int, output_dir: Path) -> str:
     adapter_path = out + "/adapter"
     model.save_pretrained(adapter_path)
     tokenizer.save_pretrained(adapter_path)
+    metrics = _evaluate_blue_model(model, tokenizer)
+    _save_json(Path(out) / "eval_blue.json", metrics)
+    _wandb_log({f"eval/blue_{k}": v for k, v in metrics.items()} | {"generation": generation})
     del model, tokenizer, trainer
     gc.collect()
     if torch.cuda.is_available():
         torch.cuda.empty_cache()
-    return adapter_path
+    return adapter_path, metrics
 
 
-def _print_summary(generation: int, red_path: str, blue_path: str) -> None:
+def _print_summary(generation: int, red_path: str, blue_path: str, red_metrics: dict[str, float], blue_metrics: dict[str, float]) -> None:
     table = Table(title=f"Generation {generation} Summary")
     table.add_column("Agent", style="bold")
     table.add_column("Adapter Path", style="dim")
-    table.add_row("Red", red_path)
-    table.add_row("Blue", blue_path)
+    table.add_column("Mean Eval Reward")
+    table.add_row("Red", red_path, f"{red_metrics.get('mean_reward', 0.0):.3f}")
+    table.add_row("Blue", blue_path, f"{blue_metrics.get('mean_reward', 0.0):.3f}")
     console.print(table)
 
 
 def main() -> None:
+    _configure_auth_tokens()
     output_dir = Path(os.getenv("SIEGE_OUTPUT_DIR", "./outputs/grpo"))
     output_dir.mkdir(parents=True, exist_ok=True)
 
@@ -455,20 +606,36 @@ def main() -> None:
 
     red_adapter: Optional[str] = None
     blue_adapter: Optional[str] = None
+    red_metrics: dict[str, float] = {}
+    blue_metrics: dict[str, float] = {}
 
     for gen in range(cfg.num_generations_training):
         console.rule(f"[bold]Generation {gen}[/bold]")
         t0 = time.time()
-        red_adapter = train_red(gen, output_dir)
-        blue_adapter = train_blue(gen, output_dir)
-        _print_summary(gen, red_adapter, blue_adapter)
+        red_adapter, red_metrics = train_red(gen, output_dir)
+        _maybe_promote_best("red", red_adapter, red_metrics, output_dir)
+        blue_adapter, blue_metrics = train_blue(gen, output_dir)
+        _maybe_promote_best("blue", blue_adapter, blue_metrics, output_dir)
+        _print_summary(gen, red_adapter, blue_adapter, red_metrics, blue_metrics)
         console.print(f"Generation {gen} complete in {(time.time() - t0) / 60:.1f} min\n")
+
+    summary = {
+        "red_adapter": red_adapter,
+        "blue_adapter": blue_adapter,
+        "best_red_reward": BEST_METRICS["red"],
+        "best_blue_reward": BEST_METRICS["blue"],
+        "hf_repo_id": HF_REPO_ID,
+    }
+    _save_json(output_dir / "training_summary.json", summary)
+    _upload_folder_to_hub(output_dir, "runs/latest")
 
     console.print(
         Panel(
             f"[bold green]Training complete![/bold green]\n\n"
             f"Final Red adapter:  {red_adapter}\n"
-            f"Final Blue adapter: {blue_adapter}",
+            f"Final Blue adapter: {blue_adapter}\n"
+            f"Best Red eval reward: {BEST_METRICS['red']:.3f}\n"
+            f"Best Blue eval reward: {BEST_METRICS['blue']:.3f}",
             title="Done",
         )
     )
