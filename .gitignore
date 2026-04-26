@@ -17,7 +17,8 @@ MANIFEST
 # ── Virtual environments ──────────────────────────────────────────────────────
 .venv/
 venv/
-env/
+# Root-only: do not use bare `env/` or paths like `interp_arena/env/` (the arena package) are gitignored
+/env/
 .env
 !.env.example
 
