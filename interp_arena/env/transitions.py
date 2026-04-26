@@ -43,7 +43,8 @@ def build_red_hooks(
         return [(H.resid_post(action.layer), hook_fn)]
 
     if t == RedActionType.LOGIT_BIAS:
-        assert action.target_token_ids and action.bias_strength is not None
+        if not action.target_token_ids or action.bias_strength is None:
+            return []
         hook_fn = H.make_logit_bias_hook(action.target_token_ids, action.bias_strength)
         return [(H.LOGITS_HOOK, hook_fn)]
 

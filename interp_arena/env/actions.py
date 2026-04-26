@@ -33,6 +33,8 @@ class RedActionType(str, Enum):
     # Prompt-level (secondary / baseline)
     MODIFY_PROMPT    = "modify_prompt"
     APPEND_SUFFIX    = "append_suffix"
+    # Side-channel: run an extra decode on *text*; surfaced on the observation
+    QUERY_MODEL      = "query_model"
 
 
 class BlueActionType(str, Enum):
@@ -154,6 +156,11 @@ def red_modify(text: str) -> RedAction:
 
 def red_suffix(text: str) -> RedAction:
     return RedAction(type=RedActionType.APPEND_SUFFIX, text=text)
+
+
+def red_query(text: str) -> RedAction:
+    """Run *text* as a standalone prompt on the target LM (see arena step)."""
+    return RedAction(type=RedActionType.QUERY_MODEL, text=text)
 
 def blue_ablate(layer: int, direction_id: str) -> BlueAction:
     return BlueAction(type=BlueActionType.ABLATE_DIRECTION,

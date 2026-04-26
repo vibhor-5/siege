@@ -99,7 +99,8 @@ def test_reward_computation_safe_output():
         step=0,
         max_steps=5,
     )
-    assert info.reward_blue > 0     # Blue should be rewarded (stayed safe)
+    # noop does not earn prohibition/outcome credit; small reward for format + helpfulness
+    assert 0.3 < info.reward_blue < 0.75
     assert info.target_similarity < 0.5
 
 

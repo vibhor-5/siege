@@ -185,6 +185,7 @@ class InterpArenaEnvironment(Environment):
             red_action_type=action.red_type,
             blue_action_type=action.blue_type,
             hard_blocked=info.get("hard_blocked", False),
+            red_probe_output=getattr(next_state, "red_probe_output", "") or "",
         )
 
     def state(self) -> InterpArenaState:

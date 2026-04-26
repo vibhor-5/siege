@@ -54,6 +54,9 @@ class ArenaState:
     # Blue detection info (did Blue detect Red's hook at each layer?)
     blue_detections: list[int] = field(default_factory=list)   # layer ids detected
 
+    # Side decode from RedActionType.QUERY_MODEL (same episode LM, no hooks)
+    red_probe_output: str = ""
+
     def to_dict(self) -> dict[str, Any]:
         """Serialise to a plain dict (safe for JSON / wandb logging)."""
         return {
@@ -62,6 +65,7 @@ class ArenaState:
             "prohibited_patterns": self.prohibited_patterns,
             "modified_prompt": self.modified_prompt,
             "model_output": self.model_output,
+            "red_probe_output": self.red_probe_output,
             "target_similarity": self.target_similarity,
             "safety_score": self.safety_score,
             "step": self.step,

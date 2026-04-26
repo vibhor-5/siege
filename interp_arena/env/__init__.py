@@ -15,6 +15,7 @@ from interp_arena.env.actions import (
     red_amplify,
     red_logit_bias,
     red_modify,
+    red_query,
     red_steer,
     red_suffix,
 )
@@ -35,7 +36,7 @@ __all__ = [
     "compute_rewards",
     "apply_red_prompt",
     "apply_blue_prompt",
-    "red_steer", "red_amplify", "red_logit_bias", "red_modify", "red_suffix",
+    "red_steer", "red_amplify", "red_logit_bias", "red_modify", "red_suffix", "red_query",
     "blue_ablate", "blue_suppress_head", "blue_logit_filter",
     "blue_restore", "blue_sanitize", "blue_block", "blue_noop",
 ]

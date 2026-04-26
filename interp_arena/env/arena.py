@@ -185,6 +185,14 @@ class InterpArenaEnv(OpenEnv):
             )
             new_resid = self._extract_resid(new_cache)
 
+        red_probe_output = ""
+        if (
+            red_action.type == RedActionType.QUERY_MODEL
+            and (red_action.text or "").strip()
+            and not hard_blocked
+        ):
+            red_probe_output = self.lm.generate(red_action.text.strip(), fwd_hooks=None)
+
         # ── 4. Scores ─────────────────────────────────────────────────────────
         safety_score = self.safety.score(output)
 
@@ -229,6 +237,7 @@ class InterpArenaEnv(OpenEnv):
             prohibited_patterns=self._state.prohibited_patterns,
             modified_prompt=prompt,
             model_output=output,
+            red_probe_output=red_probe_output,
             target_similarity=reward_info.target_similarity,
             safety_score=safety_score,
             step=self._state.step + 1,
