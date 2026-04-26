@@ -1,3 +1,19 @@
+---
+# HF Spaces: colorFrom/colorTo must be named (red, blue, indigo, …), not hex
+title: "SIEGE — Interpretability Arena"
+emoji: 🛡
+colorFrom: blue
+colorTo: indigo
+sdk: docker
+app_port: 7860
+base_path: /web
+pinned: false
+tags:
+  - openenv
+  - interpretability
+  - mechanistic-interpretability
+---
+
 # SIEGE — Interpretability Arena
 
 **Train Red and Blue agents where the fight actually happens: inside the forward pass.**
