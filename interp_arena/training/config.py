@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import dataclasses
 import os
+import sys
 from typing import Optional
 
 import torch
@@ -137,6 +138,16 @@ def load_agent_model(cfg: Optional[UnslothConfig] = None):
     c = cfg or UnslothConfig()
     os.environ.setdefault("TRANSFORMERS_NO_TORCHAO", "1")
     _patch_torch()
+
+    if sys.version_info >= (3, 14):
+        raise RuntimeError(
+            "Unsloth+TRL GRPO is not supported on Python 3.14+ yet (Unsloth’s compiled "
+            "UnslothGRPOTrainer can raise SyntaxError). Use Python 3.10–3.13, e.g.:\n"
+            "  uv python install 3.12\n"
+            "  rm -rf .venv && uv venv --python 3.12 && uv sync --extra gpu\n"
+            "If you only changed Python after a failed run, also remove: "
+            "unsloth_compiled_cache/ and /tmp/unsloth_compiled_cache"
+        ) from None
 
     try:
         from unsloth import FastLanguageModel  # noqa: PLC0415

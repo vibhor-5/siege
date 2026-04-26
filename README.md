@@ -109,6 +109,8 @@ uv sync --extra gpu
 # or, with dev tools:  uv sync --extra dev --extra gpu
 ```
 
+**Python 3.10–3.13 for GRPO:** **Unsloth** patches TRL at import; on **Python 3.14+** the generated `UnslothGRPOTrainer` can fail with `SyntaxError` (e.g. bad line in `unsloth_compiled_cache/`). The package metadata requires **`<3.14`**. If your environment (e.g. a studio) picked **3.14**, run `uv python install 3.12`, remove `.venv`, `uv venv --python 3.12`, `uv sync --extra gpu`, and delete any stale **`unsloth_compiled_cache/`** and **`/tmp/unsloth_compiled_cache`**.
+
 If you use plain `pip` instead: `pip install -e ".[gpu]"` (pulls `openenv-core`, `unsloth`, TRL, PEFT, bitsandbytes).
 
 `python-dotenv` is a direct dependency: `scripts/train_grpo.py` loads `.env` automatically.
