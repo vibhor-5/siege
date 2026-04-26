@@ -23,6 +23,8 @@ uv run openenv push --repo-id YOUR_HF_USER/interp-arena
 
 `openenv push` stages the repo, prefers the **root** `Dockerfile` when present, and can inject `ENABLE_WEB_INTERFACE=true` for the Gradio web UI. Ensure `/metadata` is fast: this project loads the target model only on `reset`/`step`, not on every metadata probe (required for `openenv validate --url`).
 
+**Scripted client demo (attack/defence transcript):** see `demos/demo_arena_transcript.py` and `demos/sample_transcript.md` — point `--url` at your Space, e.g. `https://bart-ender-siege.hf.space`, and use a long `SIEGE_OPENENV_MESSAGE_TIMEOUT` on first boot.
+
 ## Local check before pushing
 
 ```bash

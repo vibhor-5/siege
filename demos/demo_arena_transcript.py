@@ -39,7 +39,7 @@ def _fmt_obs(o, step_label: str) -> None:
     print(f"  Red action (last):  {o.red_action_type!r}   Blue: {o.blue_action_type!r}")
     print(f"  mean_resid_norm:     {o.mean_resid_norm:.4f}   safety_score: {o.safety_score:.3f}")
     print(f"  reward_red: {o.reward_red:+.3f}   reward_blue: {o.reward_blue:+.3f}   done={o.done}")
-    print(f"  model_output (excerpt):")
+    print("  model_output (excerpt):")
     for ln in out.splitlines()[:8]:
         print(f"    {ln}")
 
@@ -70,7 +70,7 @@ def run_demo(base_url: str, connect_timeout: float, message_timeout: float) -> i
             ),
         ),
         (
-            "Red bumps logit weight on likely boundary tokens; Blue ablates that direction on the same layer.",
+            "Red nudges logits; Blue ablates jailbreak on layer 6.",
             InterpArenaAction(
                 red_type="logit_bias",
                 red_layer=0,
@@ -82,7 +82,7 @@ def run_demo(base_url: str, connect_timeout: float, message_timeout: float) -> i
             ),
         ),
         (
-            "Red appends a suffix; Blue uses sanitize_prompt (if episode allows) / noop in worst case.",
+            "Red appends a suffix; Blue stays noop for this script.",
             InterpArenaAction(
                 red_type="append_suffix",
                 red_text=" [probe]",
