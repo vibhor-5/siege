@@ -12,7 +12,7 @@ This version is optimized for training stability:
 - each GRPO completion is evaluated on its own fresh episode
 - prompt metadata is used to match the sampled episode back in the env
 - the env always receives the full combined red/blue action schema
-- HTTP sessions are reused instead of reconnecting every request
+- OpenEnv WebSocket client (`InterpArenaEnv.sync()`) for persistent sessions per OpenEnv docs
 """
 
 from __future__ import annotations
@@ -44,10 +44,15 @@ from interp_arena.agents.llm_blue_agent import BLUE_SYSTEM_PROMPT
 from interp_arena.agents.llm_red_agent import RED_SYSTEM_PROMPT
 from interp_arena.training.config import UnslothConfig, grpo_config, load_agent_model
 
+from client import InterpArenaEnv
+from models import InterpArenaAction, InterpArenaObservation, InterpArenaState
+from openenv.core.sync_client import SyncEnvClient
+
 console = Console()
 load_dotenv()
 cfg = UnslothConfig()
-_http = requests.Session()
+# OpenEnv sync client (WebSocket); set in main() before any env interaction
+_SYNC_ARENA: SyncEnvClient[InterpArenaAction, InterpArenaObservation, InterpArenaState] | None = None
 _target_tokenizer = None
 HF_REPO_ID = os.getenv("SIEGE_HF_REPO_ID", "BART-ender/siege")
 EVAL_EPISODES = int(os.getenv("SIEGE_EVAL_EPISODES", "24"))
@@ -71,10 +76,6 @@ _VALID_BLUE_ACTIONS = {
     "block_output",
     "noop",
 }
-
-
-def _extract_obs(payload: dict) -> dict:
-    return payload.get("observation", payload)
 
 
 def _episode_signature(obs: dict) -> str:
@@ -128,9 +129,10 @@ def _configure_auth_tokens() -> None:
 
 
 def _reset_env() -> dict:
-    resp = _http.post(f"{cfg.env_url}/reset", timeout=30)
-    resp.raise_for_status()
-    return _extract_obs(resp.json())
+    if _SYNC_ARENA is None:
+        raise RuntimeError("OpenEnv client not initialized (call main() entrypoint)")
+    result = _SYNC_ARENA.reset()
+    return result.observation.model_dump()
 
 
 def _reset_env_matching(signature: str, max_attempts: int = 32) -> dict:
@@ -142,12 +144,13 @@ def _reset_env_matching(signature: str, max_attempts: int = 32) -> dict:
 
 
 def _step_env(action: dict) -> tuple[float, dict, bool]:
-    resp = _http.post(f"{cfg.env_url}/step", json={"action": action}, timeout=60)
-    resp.raise_for_status()
-    payload = resp.json()
-    obs = _extract_obs(payload)
-    reward = float(obs.get("reward_red", payload.get("reward", -1.0)))
-    done = bool(obs.get("done", payload.get("done", False)))
+    if _SYNC_ARENA is None:
+        raise RuntimeError("OpenEnv client not initialized (call main() entrypoint)")
+    act = InterpArenaAction.model_validate(action)
+    result = _SYNC_ARENA.step(act)
+    obs = result.observation.model_dump()
+    reward = float(obs.get("reward_red", -1.0))
+    done = bool(obs.get("done", result.done if result.done is not None else False))
     return reward, obs, done
 
 
@@ -594,7 +597,7 @@ def main() -> None:
     )
 
     try:
-        resp = _http.get(f"{cfg.env_url}/health", timeout=5)
+        resp = requests.get(f"{cfg.env_url.rstrip('/')}/health", timeout=5)
         resp.raise_for_status()
         console.print(f"[green]✓ Env server alive at {cfg.env_url}[/green]")
     except Exception:
@@ -604,41 +607,56 @@ def main() -> None:
         )
         raise
 
-    red_adapter: Optional[str] = None
-    blue_adapter: Optional[str] = None
-    red_metrics: dict[str, float] = {}
-    blue_metrics: dict[str, float] = {}
+    global _SYNC_ARENA
+    _msg_timeout = float(os.getenv("SIEGE_OPENENV_MESSAGE_TIMEOUT", "120"))
+    with (
+        InterpArenaEnv(
+            base_url=cfg.env_url,
+            connect_timeout_s=30.0,
+            message_timeout_s=_msg_timeout,
+        ).sync() as _sync_arena
+    ):
+        _SYNC_ARENA = _sync_arena
+        try:
+            red_adapter: Optional[str] = None
+            blue_adapter: Optional[str] = None
+            red_metrics: dict[str, float] = {}
+            blue_metrics: dict[str, float] = {}
 
-    for gen in range(cfg.num_generations_training):
-        console.rule(f"[bold]Generation {gen}[/bold]")
-        t0 = time.time()
-        red_adapter, red_metrics = train_red(gen, output_dir)
-        _maybe_promote_best("red", red_adapter, red_metrics, output_dir)
-        blue_adapter, blue_metrics = train_blue(gen, output_dir)
-        _maybe_promote_best("blue", blue_adapter, blue_metrics, output_dir)
-        _print_summary(gen, red_adapter, blue_adapter, red_metrics, blue_metrics)
-        console.print(f"Generation {gen} complete in {(time.time() - t0) / 60:.1f} min\n")
+            for gen in range(cfg.num_generations_training):
+                console.rule(f"[bold]Generation {gen}[/bold]")
+                t0 = time.time()
+                red_adapter, red_metrics = train_red(gen, output_dir)
+                _maybe_promote_best("red", red_adapter, red_metrics, output_dir)
+                blue_adapter, blue_metrics = train_blue(gen, output_dir)
+                _maybe_promote_best("blue", blue_adapter, blue_metrics, output_dir)
+                _print_summary(gen, red_adapter, blue_adapter, red_metrics, blue_metrics)
+                console.print(
+                    f"Generation {gen} complete in {(time.time() - t0) / 60:.1f} min\n"
+                )
 
-    summary = {
-        "red_adapter": red_adapter,
-        "blue_adapter": blue_adapter,
-        "best_red_reward": BEST_METRICS["red"],
-        "best_blue_reward": BEST_METRICS["blue"],
-        "hf_repo_id": HF_REPO_ID,
-    }
-    _save_json(output_dir / "training_summary.json", summary)
-    _upload_folder_to_hub(output_dir, "runs/latest")
+            summary = {
+                "red_adapter": red_adapter,
+                "blue_adapter": blue_adapter,
+                "best_red_reward": BEST_METRICS["red"],
+                "best_blue_reward": BEST_METRICS["blue"],
+                "hf_repo_id": HF_REPO_ID,
+            }
+            _save_json(output_dir / "training_summary.json", summary)
+            _upload_folder_to_hub(output_dir, "runs/latest")
 
-    console.print(
-        Panel(
-            f"[bold green]Training complete![/bold green]\n\n"
-            f"Final Red adapter:  {red_adapter}\n"
-            f"Final Blue adapter: {blue_adapter}\n"
-            f"Best Red eval reward: {BEST_METRICS['red']:.3f}\n"
-            f"Best Blue eval reward: {BEST_METRICS['blue']:.3f}",
-            title="Done",
-        )
-    )
+            console.print(
+                Panel(
+                    f"[bold green]Training complete![/bold green]\n\n"
+                    f"Final Red adapter:  {red_adapter}\n"
+                    f"Final Blue adapter: {blue_adapter}\n"
+                    f"Best Red eval reward: {BEST_METRICS['red']:.3f}\n"
+                    f"Best Blue eval reward: {BEST_METRICS['blue']:.3f}",
+                    title="Done",
+                )
+            )
+        finally:
+            _SYNC_ARENA = None
 
 
 if __name__ == "__main__":
