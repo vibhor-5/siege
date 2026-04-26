@@ -12,6 +12,7 @@ from __future__ import annotations
 import os
 
 from openenv.core.env_server import Environment
+from openenv.core.env_server.types import EnvironmentMetadata
 
 # ── Core ML imports (loaded at server startup) ────────────────────────────────
 from interp_arena.env.actions import (
@@ -70,14 +71,10 @@ class InterpArenaEnvironment(Environment):
         self._safety = SafetyClassifier(mode=safety_mode)
         self._registry: DirectionRegistry = get_default_registry()
 
-        # Seed random directions if none are registered (for heuristic agents)
-        try:
-            self._lm.load()
-            if not self._registry.list():
-                for name, seed in [("toxicity", 0), ("refusal", 1), ("jailbreak", 2)]:
-                    self._registry.make_random(name, self._lm.d_model, seed=seed)
-        except Exception:
-            pass  # model may not be loaded yet; directions seeded on first reset
+        # Do not call self._lm.load() here. OpenEnv's HTTP /metadata, /state, etc.
+        # instantiate a fresh environment per request; eager loading would block
+        # health checks and `openenv validate --url` for minutes. Load on first
+        # reset/step via _seed_directions_if_needed().
 
         # Build a minimal OmegaConf-like config
         self._cfg = _MinimalConfig()
@@ -99,9 +96,28 @@ class InterpArenaEnvironment(Environment):
         self._target_output: str = ""
         self._prohibited: list[str] = []
 
+    def _seed_directions_if_needed(self) -> None:
+        """Load weights and register default directions; safe to call more than once."""
+        self._lm.load()
+        if not self._registry.list():
+            for name, seed in [("toxicity", 0), ("refusal", 1), ("jailbreak", 2)]:
+                self._registry.make_random(name, self._lm.d_model, seed=seed)
+
+    def get_metadata(self) -> EnvironmentMetadata:
+        """Static metadata (no model load) for fast OpenEnv /metadata and validate."""
+        return EnvironmentMetadata(
+            name="interp-arena",
+            description=(
+                "Interpretability Arena: Red vs Blue mechanistic attack/defence on "
+                "a frozen target LLM (TransformerLens + structured actions)."
+            ),
+            version="0.1.0",
+        )
+
     # ── OpenEnv API ───────────────────────────────────────────────────────────
 
     def reset(self) -> InterpArenaObservation:
+        self._seed_directions_if_needed()
         inner_state = self._core.reset()
         self._episode_id += 1
         self._step_count = 0
@@ -129,6 +145,7 @@ class InterpArenaEnvironment(Environment):
         )
 
     def step(self, action: InterpArenaAction) -> InterpArenaObservation:
+        self._seed_directions_if_needed()
         red_action = _to_red_action(action)
         blue_action = _to_blue_action(action)
 
