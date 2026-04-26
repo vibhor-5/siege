@@ -82,6 +82,7 @@ _VALID_RED_ACTIONS = {
     "logit_bias",
     "append_suffix",
     "modify_prompt",
+    "query_model",
 }
 _VALID_BLUE_ACTIONS = {
     "ablate_direction",
@@ -620,7 +621,8 @@ def main() -> None:
     except Exception:
         console.print(
             f"[red]✗ Env server not responding at {cfg.env_url}.\n"
-            "Start it with: uvicorn server.app:app --host 0.0.0.0 --port 8000[/red]"
+            "Start it with: uv run uvicorn server.app:app --host 0.0.0.0 --port 8000"
+            " (must be the same venv as this script; see README)[/red]"
         )
         raise
 
