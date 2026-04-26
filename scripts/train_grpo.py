@@ -18,6 +18,7 @@ This version is optimized for training stability:
 from __future__ import annotations
 
 import gc
+import importlib.util
 import json
 import os
 import re
@@ -29,30 +30,46 @@ from typing import Optional
 
 import requests
 import torch
+import wandb
 from datasets import Dataset
 from dotenv import load_dotenv
 from rich.console import Console
 from rich.panel import Panel
 from rich.table import Table
-from trl import GRPOTrainer
 from transformers import AutoTokenizer
-import wandb
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
+# TRL loads mergekit if installed; mergekit 0.1.4 breaks on import with Pydantic 2.11+.
+# GRPO does not use mergekit — uninstall it.
+if os.environ.get("SIEGE_ALLOW_MERGEKIT", "").lower() not in ("1", "true", "yes"):
+    if importlib.util.find_spec("mergekit") is not None:
+        print(
+            "train_grpo: 'mergekit' is installed. TRL will import it and this often raises "
+            "PydanticSchemaGenerationError (mergekit 0.1.4 is incompatible with current Pydantic). "
+            "GRPO does not need mergekit.\n"
+            "  Run:  uv pip uninstall mergekit  (or  pip uninstall mergekit  )\n"
+            "  Override (not recommended):  SIEGE_ALLOW_MERGEKIT=1",
+            file=sys.stderr,
+        )
+        raise SystemExit(1)
+
+from openenv.core.sync_client import SyncEnvClient
+from trl import GRPOTrainer
+
+from client import InterpArenaEnv
 from interp_arena.agents.llm_blue_agent import BLUE_SYSTEM_PROMPT
 from interp_arena.agents.llm_red_agent import RED_SYSTEM_PROMPT
 from interp_arena.training.config import UnslothConfig, grpo_config, load_agent_model
-
-from client import InterpArenaEnv
 from models import InterpArenaAction, InterpArenaObservation, InterpArenaState
-from openenv.core.sync_client import SyncEnvClient
 
 console = Console()
 load_dotenv()
 cfg = UnslothConfig()
 # OpenEnv sync client (WebSocket); set in main() before any env interaction
-_SYNC_ARENA: SyncEnvClient[InterpArenaAction, InterpArenaObservation, InterpArenaState] | None = None
+_SYNC_ARENA: (
+    SyncEnvClient[InterpArenaAction, InterpArenaObservation, InterpArenaState] | None
+) = None
 _target_tokenizer = None
 HF_REPO_ID = os.getenv("SIEGE_HF_REPO_ID", "BART-ender/siege")
 EVAL_EPISODES = int(os.getenv("SIEGE_EVAL_EPISODES", "24"))

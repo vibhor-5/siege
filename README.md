@@ -113,7 +113,7 @@ If you use plain `pip` instead: `pip install -e ".[gpu]"` (pulls `openenv-core`,
 
 `python-dotenv` is a direct dependency: `scripts/train_grpo.py` loads `.env` automatically.
 
-**TRL / mergekit:** `train_grpo` imports **TRL 0.26.x** (see `pyproject.toml`). On TRL **0.24**, `GRPOTrainer` still imported callback code that could pull the optional **mergekit** stack; installing `mergekit` then clashed with **Pydantic** (`torch.Tensor` schema errors in mergekit, or a missing `mergekit` module in minimal images). Pinned 0.26+ avoids that path—you should **not** need `pip install mergekit` for GRPO here.
+**TRL / mergekit:** `train_grpo` uses **TRL 0.26.x**. If you ever **`pip install mergekit`**, TRL will detect it and import it from `merge_model_callback`; **mergekit 0.1.4** then often crashes at import on **Pydantic 2.11+** (`torch.Tensor` schema errors). **GRPO does not need mergekit** — run **`uv pip uninstall mergekit`** (or `pip uninstall mergekit`) before training. The training script fails fast with a clear message if `mergekit` is present (override: `SIEGE_ALLOW_MERGEKIT=1`, rarely useful).
 
 ### 2. Configure secrets and logging (optional)
 
