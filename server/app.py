@@ -13,3 +13,16 @@ if os.environ.get("ENABLE_WEB_INTERFACE", "false").lower() == "true":
     app = create_web_interface_app(InterpArenaEnvironment, InterpArenaAction, InterpArenaObservation)
 else:
     app = create_fastapi_app(InterpArenaEnvironment, InterpArenaAction, InterpArenaObservation)
+
+
+def main() -> None:
+    """Console entry for OpenEnv multi-mode / `openenv validate` and `uv run server`."""
+    import uvicorn
+
+    port = int(os.environ.get("PORT", "8000"))
+    host = os.environ.get("HOST", "0.0.0.0")
+    uvicorn.run(app, host=host, port=port)
+
+
+if __name__ == "__main__":
+    main()

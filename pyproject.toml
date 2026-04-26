@@ -23,7 +23,8 @@ dependencies = [
     "omegaconf>=2.3.0",
     "hydra-core>=1.3.0",
     # RL / PEFT
-    "trl>=0.9.0",
+    # 0.26+ no longer eager-imports mergekit in callbacks (avoids mergekit/pydantic); cap avoids surprise API breaks
+    "trl>=0.26.0,<0.27",
     "peft>=0.11.0",
     "bitsandbytes>=0.43.0",
     # Utilities
@@ -47,12 +48,15 @@ gpu = [
     "openenv-core>=0.2.3",
     # GRPO + Unsloth LoRA (requires CUDA for training; `uv sync --extra gpu`)
     "unsloth",
-    "trl>=0.9.0",
+    # 0.26+ no longer eager-imports mergekit in callbacks (avoids mergekit/pydantic); cap avoids surprise API breaks
+    "trl>=0.26.0,<0.27",
     "peft>=0.11.0",
     "bitsandbytes>=0.43.0",
 ]
 
 [project.scripts]
+# `server` name required by `openenv validate` (multi-mode deployment)
+server     = "server.app:main"
 train      = "scripts.train:main"
 train-grpo = "scripts.train_grpo:main"
 
