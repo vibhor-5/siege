@@ -138,7 +138,14 @@ def load_agent_model(cfg: Optional[UnslothConfig] = None):
     os.environ.setdefault("TRANSFORMERS_NO_TORCHAO", "1")
     _patch_torch()
 
-    from unsloth import FastLanguageModel  # noqa: PLC0415
+    try:
+        from unsloth import FastLanguageModel  # noqa: PLC0415
+    except ModuleNotFoundError as e:
+        raise ModuleNotFoundError(
+            "unsloth is required for GRPO training. Install with:\n"
+            "  uv sync --extra gpu\n"
+            "or: pip install unsloth"
+        ) from e
 
     model, tokenizer = FastLanguageModel.from_pretrained(
         model_name=c.agent_model_id,

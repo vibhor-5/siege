@@ -86,11 +86,14 @@ uv venv && source .venv/bin/activate   # or your preferred venv
 uv pip install -e ".[dev]"
 ```
 
-**GRPO additionally needs Unsloth** (CUDA; install follows [Unsloth’s current instructions](https://github.com/unslothai/unsloth)):
+**GRPO additionally needs the `gpu` extra** (includes **Unsloth** + the same TRL/PEFT stack; CUDA at runtime):
 
 ```bash
-pip install unsloth
+uv sync --extra gpu
+# or, with dev tools:  uv sync --extra dev --extra gpu
 ```
+
+If you use plain `pip` instead: `pip install -e ".[gpu]"` or `pip install unsloth` after the base install.
 
 `python-dotenv` is a direct dependency: `scripts/train_grpo.py` loads `.env` automatically.
 
@@ -143,6 +146,12 @@ All major GRPO knobs are environment variables (see `interp_arena/training/confi
 - `SIEGE_NUM_GENERATIONS`, `SIEGE_STEPS_PER_AGENT`
 - `SIEGE_GRPO_*` (batch size, LR, generations, sequence lengths, …)
 - `SIEGE_REPORT_TO` — passed to TRL (`wandb` by default; set `none` to disable if you prefer)
+
+---
+
+## Hugging Face Spaces (Docker)
+
+The repo includes a **root `Dockerfile`** (port `7860`, `PORT`-aware) and `deploy/huggingface/DEPLOY.md` with step-by-step instructions. Copy `deploy/huggingface/README.md` to your Space’s **root** `README.md` for the Space card metadata (`sdk: docker`, `app_port: 7860`) or merge the YAML block into an existing card.
 
 ---
 
