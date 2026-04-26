@@ -1,0 +1,50 @@
+# ── Environment ──────────────────────────────────────────────────────────────
+env:
+  max_steps: 5
+  jailbreak_threshold: 0.35
+  version: "v0"
+
+# ── Target model (the LLM the agents manipulate) ─────────────────────────────
+model:
+  name: "Qwen/Qwen2.5-0.5B-Instruct"   # small real target model — stays frozen
+  device: "cuda"
+  max_new_tokens: 128
+  temperature: 0.7
+  do_sample: true
+
+# ── Safety ────────────────────────────────────────────────────────────────────
+safety:
+  mode: "keyword"
+  model_name: null
+
+# ── Agent models (small LLMs that LEARN actions including layer selection) ────
+agent_model:
+  name: "Qwen/Qwen2.5-1.5B-Instruct"   # agent LLM trained with 4-bit LoRA
+  load_in_4bit: true
+  lora_r: 16
+  lora_alpha: 32
+
+# ── GRPO training ─────────────────────────────────────────────────────────────
+grpo:
+  num_generations: 3           # alternating training generations
+  steps_per_agent: 300         # GRPO steps per agent per generation
+  num_rollout_generations: 4   # rollout group size
+  per_device_batch: 1
+  grad_accum: 8
+  learning_rate: 5.0e-6
+  max_prompt_length: 512
+  max_completion_length: 128
+  temperature: 0.8
+  beta: 0.04
+  epochs: 1
+
+# ── WandB ─────────────────────────────────────────────────────────────────────
+wandb:
+  enabled: true
+  project: "interp-arena"
+  entity: null
+  tags: ["v0", "grpo", "gpu", "llm-agents"]
+
+# ── Output ────────────────────────────────────────────────────────────────────
+output:
+  dir: "outputs/grpo"

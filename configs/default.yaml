@@ -1,0 +1,43 @@
+# ── Environment ──────────────────────────────────────────────────────────────
+env:
+  max_steps: 5
+  jailbreak_threshold: 0.35
+  version: "v0"
+
+# ── Model ─────────────────────────────────────────────────────────────────────
+model:
+  name: "Qwen/Qwen2.5-0.5B-Instruct"   # small real target model for local / CPU runs
+  device: "cpu"
+  max_new_tokens: 128
+  temperature: 0.7
+  do_sample: true
+
+# ── Safety ────────────────────────────────────────────────────────────────────
+safety:
+  mode: "keyword"
+  model_name: null
+
+# ── Agents ────────────────────────────────────────────────────────────────────
+red_agent:
+  type: "heuristic"
+  steer_prob: 0.6
+  strength_range: [1.0, 5.0]
+
+blue_agent:
+  type: "heuristic"
+  ablate_prob: 0.5
+
+# ── Training ──────────────────────────────────────────────────────────────────
+training:
+  num_episodes: 200
+  eval_every: 20
+  checkpoint_every: 50
+  output_dir: "outputs/run"
+  seed: 42
+
+# ── WandB ─────────────────────────────────────────────────────────────────────
+wandb:
+  enabled: false             # set true when WANDB_API_KEY is set
+  project: "interp-arena"
+  entity: null
+  tags: ["v0", "heuristic"]

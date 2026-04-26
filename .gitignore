@@ -1,0 +1,76 @@
+# ── Python ────────────────────────────────────────────────────────────────────
+__pycache__/
+*.py[cod]
+*$py.class
+*.pyo
+*.pyd
+*.so
+*.egg
+*.egg-info/
+dist/
+build/
+.eggs/
+.installed.cfg
+MANIFEST
+*.pyc
+
+# ── Virtual environments ──────────────────────────────────────────────────────
+.venv/
+venv/
+env/
+.env
+!.env.example
+
+# ── ML artifacts ──────────────────────────────────────────────────────────────
+outputs/
+checkpoints/
+*.pt
+*.pth
+*.safetensors
+*.gguf
+*.bin
+
+# ── Unsloth / LoRA adapters (large — push to HF Hub instead) ─────────────────
+*/adapter/
+adapter_config.json
+adapter_model.*
+
+# ── WandB ─────────────────────────────────────────────────────────────────────
+wandb/
+.wandb/
+
+# ── Hydra ─────────────────────────────────────────────────────────────────────
+.hydra/
+multirun/
+
+# ── Cache & temp ──────────────────────────────────────────────────────────────
+.cache/
+*.log
+*.tmp
+*.bak
+.DS_Store
+Thumbs.db
+
+# ── Data (keep tracked files, ignore large raw dumps) ────────────────────────
+data/raw/
+data/cache/
+*.jsonl.gz
+*.parquet
+
+# ── Jupyter ───────────────────────────────────────────────────────────────────
+.ipynb_checkpoints/
+*.ipynb
+
+# ── IDE ───────────────────────────────────────────────────────────────────────
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# ── OpenEnv runtime outputs ───────────────────────────────────────────────────
+openenv_outputs/
+
+# ── Coverage / test artifacts ────────────────────────────────────────────────
+.coverage
+.pytest_cache/
+htmlcov/

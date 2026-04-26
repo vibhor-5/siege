@@ -1,0 +1,24 @@
+name: interp-arena
+version: 0.1.0
+description: >
+  Interpretability Arena: Red vs Blue — a multi-agent adversarial environment
+  where agents learn to manipulate and defend LLM internal states using
+  mechanistic interpretability techniques (TransformerLens).
+author: ""
+license: BSD-3-Clause
+
+# Server entry point
+server:
+  module: server.app
+  host: 0.0.0.0
+  port: 8000
+
+# Action / Observation types
+action_type: models.InterpArenaAction
+observation_type: models.InterpArenaObservation
+state_type: models.InterpArenaState
+
+# Container
+docker:
+  dockerfile: server/Dockerfile
+  image: interp-arena:latest
