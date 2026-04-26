@@ -16,10 +16,10 @@ import shutil
 import sys
 import warnings
 from pathlib import Path
-from typing import Optional
 
 import torch
 
+from interp_arena.training.unsloth_inspect import apply_unsloth_inspect_patch
 
 # ── Environment variable helpers ─────────────────────────────────────────────
 
@@ -90,7 +90,7 @@ class UnslothConfig:
     steps_per_agent: int          = _env_int("SIEGE_STEPS_PER_AGENT", 300)
 
 
-def grpo_config(output_dir: str, run_name: str, cfg: Optional[UnslothConfig] = None):
+def grpo_config(output_dir: str, run_name: str, cfg: UnslothConfig | None = None):
     """Build a GRPOConfig from env/config."""
     from trl import GRPOConfig
 
@@ -160,13 +160,18 @@ def _clear_unsloth_compile_caches() -> list[str]:
 
 def _evict_unsloth_from_sys_modules() -> None:
     """Drop half-imported unsloth* modules so a retry can re-run patches."""
-    for k in [m for m in list(sys.modules) if m == "unsloth" or m.startswith("unsloth_") or m.startswith("unsloth.")]:
+    keys = [
+        m
+        for m in list(sys.modules)
+        if m == "unsloth" or m.startswith("unsloth_") or m.startswith("unsloth.")
+    ]
+    for k in keys:
         del sys.modules[k]
     importlib.invalidate_caches()
 
 
 def _is_unsloth_grpo_compile_failure(exc: BaseException) -> bool:
-    """True when Unsloth’s TRL/GRPO trainer rewrite left bad generated code (often after Py 3.14)."""
+    """True when Unsloth TRL/GRPO trainer rewrite left bad generated code (often after Py 3.14)."""
     msg = f"{type(exc).__name__}: {exc!s}"
     if isinstance(exc, (SyntaxError, RuntimeError, ImportError)):
         return (
@@ -177,7 +182,7 @@ def _is_unsloth_grpo_compile_failure(exc: BaseException) -> bool:
     return False
 
 
-def load_agent_model(cfg: Optional[UnslothConfig] = None):
+def load_agent_model(cfg: UnslothConfig | None = None):
     """Load small LLM agent model with Unsloth 4-bit LoRA.
 
     Returns (model, tokenizer) ready for GRPOTrainer.
@@ -197,6 +202,8 @@ def load_agent_model(cfg: Optional[UnslothConfig] = None):
             "unsloth_compiled_cache/ and /tmp/unsloth_compiled_cache"
         ) from None
 
+    apply_unsloth_inspect_patch()
+
     _flm: type | None = None
     for attempt in (1, 2):
         try:
@@ -215,7 +222,8 @@ def load_agent_model(cfg: Optional[UnslothConfig] = None):
                 removed = _clear_unsloth_compile_caches()
                 _evict_unsloth_from_sys_modules()
                 warnings.warn(
-                    "Unsloth GRPO trainer compile failed; cleared compile caches and retrying import once. "
+                    "Unsloth GRPO trainer compile failed; cleared compile caches and "
+                    "retrying import once. "
                     f"python={sys.version.split()[0]} {sys.executable!r} removed={removed!r}",
                     UserWarning,
                     stacklevel=2,
@@ -242,7 +250,7 @@ def load_agent_model(cfg: Optional[UnslothConfig] = None):
     return model, tokenizer
 
 
-def load_frozen_opponent(adapter_path: str, cfg: Optional[UnslothConfig] = None):
+def load_frozen_opponent(adapter_path: str, cfg: UnslothConfig | None = None):
     """Load a frozen opponent from a saved LoRA adapter (eval mode, no grad)."""
     from peft import PeftModel  # noqa: PLC0415
     from transformers import AutoModelForCausalLM, AutoTokenizer  # noqa: PLC0415

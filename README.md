@@ -111,6 +111,8 @@ uv sync --extra gpu
 
 **Python 3.10–3.13 for GRPO:** **Unsloth** patches TRL at import; on **Python 3.14+** the generated `UnslothGRPOTrainer` can fail with `SyntaxError` (e.g. bad line in `unsloth_compiled_cache/`). The package metadata requires **`<3.14`**. The repo includes **`.python-version`** (`3.12`) so **`uv`** can pick 3.12 for new venvs. If the environment still used **3.14**, run `uv python install 3.12`, `rm -rf .venv unsloth_compiled_cache /tmp/unsloth_compiled_cache`, `uv venv` (reads `.python-version`), `uv sync --extra gpu`. After switching Python, stale caches cause the same error — **`load_agent_model` clears them and retries the import once**; if you still see compile errors, delete those two directories by hand and run again.
 
+If you see **`OSError: could not get source code`** from Unsloth on `BitsAndBytesConfig.__init__` (some cloud sandboxes), the repo patches **`inspect.getsource`** via `interp_arena/training/unsloth_inspect.py` and **`train_grpo.py` imports `unsloth` before TRL** so Unsloth’s own import order is satisfied.
+
 If you use plain `pip` instead: `pip install -e ".[gpu]"` (pulls `openenv-core`, `unsloth`, TRL, PEFT, bitsandbytes).
 
 `python-dotenv` is a direct dependency: `scripts/train_grpo.py` loads `.env` automatically.

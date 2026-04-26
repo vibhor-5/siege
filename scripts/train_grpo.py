@@ -26,17 +26,6 @@ import shutil
 import sys
 import time
 from pathlib import Path
-from typing import Optional
-
-import requests
-import torch
-import wandb
-from datasets import Dataset
-from dotenv import load_dotenv
-from rich.console import Console
-from rich.panel import Panel
-from rich.table import Table
-from transformers import AutoTokenizer
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
@@ -54,7 +43,22 @@ if os.environ.get("SIEGE_ALLOW_MERGEKIT", "").lower() not in ("1", "true", "yes"
         )
         raise SystemExit(1)
 
+# Unsloth must load before trl/transformers; inspect.getsource on BitsAndBytesConfig can fail
+# in some cloud envs without the shim in unsloth_inspect.
+from interp_arena.training.unsloth_inspect import apply_unsloth_inspect_patch  # noqa: E402
+
+apply_unsloth_inspect_patch()
+import requests
+import torch
+import unsloth  # noqa: F401, E402
+import wandb
+from datasets import Dataset
+from dotenv import load_dotenv
 from openenv.core.sync_client import SyncEnvClient
+from rich.console import Console
+from rich.panel import Panel
+from rich.table import Table
+from transformers import AutoTokenizer
 from trl import GRPOTrainer
 
 from client import InterpArenaEnv
@@ -107,12 +111,12 @@ def _episode_signature(obs: dict) -> str:
     )
 
 
-def _signature_from_prompt(prompt: str) -> Optional[str]:
+def _signature_from_prompt(prompt: str) -> str | None:
     match = re.search(r"EPISODE_SIGNATURE:\s*(\{.*\})", prompt)
     return match.group(1) if match else None
 
 
-def _extract_json_object(text: str) -> Optional[dict]:
+def _extract_json_object(text: str) -> dict | None:
     match = re.search(r"\{[^{}]*\}", text, re.DOTALL)
     if not match:
         return None
@@ -211,9 +215,10 @@ def _heuristic_red_action(obs: dict) -> dict:
     }
 
 
-def _heuristic_blue_action(obs: dict, red_action: Optional[dict] = None) -> dict:
+def _heuristic_blue_action(obs: dict, red_action: dict | None = None) -> dict:
     if red_action:
-        if red_action.get("action_type") == "steer_residual" and red_action.get("layer") is not None:
+        is_steer = red_action.get("action_type") == "steer_residual"
+        if is_steer and red_action.get("layer") is not None:
             return {
                 "action_type": "ablate_direction",
                 "layer": int(red_action["layer"]),
@@ -333,7 +338,11 @@ def _format_blue_prompt(obs: dict) -> str:
         target_similarity=float(obs.get("target_similarity", 0.0)),
         layer_norm_table=_get_layer_norm_table(obs),
         red_action_type=obs.get("red_action_type", "unknown"),
-        red_layer=obs.get("detected_layers", [None])[0] if obs.get("detected_layers") else "unknown",
+        red_layer=(
+            obs.get("detected_layers", [None])[0]
+            if obs.get("detected_layers")
+            else "unknown"
+        ),
         defended_layers=[],
         strategy_hint="Block secret leakage while preserving benign output.",
     )
@@ -495,7 +504,12 @@ def _save_json(path: Path, payload: dict) -> None:
     path.write_text(json.dumps(payload, indent=2))
 
 
-def _save_best_snapshot(kind: str, adapter_path: str, metrics: dict[str, float], output_dir: Path) -> Path:
+def _save_best_snapshot(
+    kind: str,
+    adapter_path: str,
+    metrics: dict[str, float],
+    output_dir: Path,
+) -> Path:
     best_dir = output_dir / f"best_{kind}"
     if best_dir.exists():
         shutil.rmtree(best_dir)
@@ -524,7 +538,12 @@ def _upload_folder_to_hub(local_dir: Path, path_in_repo: str) -> None:
         console.print(f"[yellow]HF upload skipped/failed: {exc}[/yellow]")
 
 
-def _maybe_promote_best(kind: str, adapter_path: str, metrics: dict[str, float], output_dir: Path) -> None:
+def _maybe_promote_best(
+    kind: str,
+    adapter_path: str,
+    metrics: dict[str, float],
+    output_dir: Path,
+) -> None:
     score = float(metrics.get("mean_reward", float("-inf")))
     if score <= BEST_METRICS[kind]:
         return
@@ -587,7 +606,13 @@ def train_blue(generation: int, output_dir: Path) -> tuple[str, dict[str, float]
     return adapter_path, metrics
 
 
-def _print_summary(generation: int, red_path: str, blue_path: str, red_metrics: dict[str, float], blue_metrics: dict[str, float]) -> None:
+def _print_summary(
+    generation: int,
+    red_path: str,
+    blue_path: str,
+    red_metrics: dict[str, float],
+    blue_metrics: dict[str, float],
+) -> None:
     table = Table(title=f"Generation {generation} Summary")
     table.add_column("Agent", style="bold")
     table.add_column("Adapter Path", style="dim")
@@ -649,8 +674,8 @@ def main() -> None:
     ):
         _SYNC_ARENA = _sync_arena
         try:
-            red_adapter: Optional[str] = None
-            blue_adapter: Optional[str] = None
+            red_adapter: str | None = None
+            blue_adapter: str | None = None
             red_metrics: dict[str, float] = {}
             blue_metrics: dict[str, float] = {}
 
