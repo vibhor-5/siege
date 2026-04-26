@@ -50,7 +50,7 @@ The result: a Blue that has survived a trained Red's full distribution of attack
 
 **Blue agent reward over training:**
 
-[Blue reward curve](assets/blue_graph.png)
+![Blue reward curve](assets/blue_graph.png)
 *Mean episode reward vs. training step.*
 
 **Red vs. Blue co-training:**
