@@ -42,7 +42,18 @@ class LanguageModel:
     def load(self) -> None:
         if self._model is not None:
             return
-        import transformer_lens  # noqa: PLC0415
+        # TransformerLens imports BertForPreTraining at module import time; a broken or 5.x-only
+        # `transformers` in the *server* venv then fails here — not inside Qwen loading.
+        try:
+            import transformer_lens  # noqa: PLC0415
+        except Exception as e:
+            raise RuntimeError(
+                "Failed to import transformer-lens. Its dependency chain requires "
+                "`transformers` to provide BertForPreTraining; mixed versions often break this. "
+                "Use the same pins as the repo in the process serving the arena: "
+                "`pip install -r server/requirements.txt --force-reinstall` then restart uvicorn. "
+                f"Original error: {e}"
+            ) from e
 
         self._model = transformer_lens.HookedTransformer.from_pretrained(
             self.model_name,
