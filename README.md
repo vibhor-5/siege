@@ -121,7 +121,7 @@ siege/
 | 🤗 HF Space       | [BART-ender/siege](https://huggingface.co/spaces/BART-ender/siege)                                     |
 | 📓 Training Colab | [Open in Colab](https://colab.research.google.com/drive/1zU9ugU8CJwZDq2Fxu9ccYGh7v_dVft9W?usp=sharing) |
 | 💻 Code           | [github.com/vibhor-5/siege](https://github.com/vibhor-5/siege)                                         |
-| 📝 Blog post      | [Blog](BLOG.md)]                                                                                       |
+| 📝 Blog post      | [Blog](BLOG.md)                                                                                      |
 
 
 ---
