@@ -86,14 +86,14 @@ uv venv && source .venv/bin/activate   # or your preferred venv
 uv pip install -e ".[dev]"
 ```
 
-**GRPO additionally needs the `gpu` extra** (includes **Unsloth** + the same TRL/PEFT stack; CUDA at runtime):
+**GRPO additionally needs the `gpu` extra** (includes **OpenEnv** (`openenv-core`), **Unsloth**, and TRL/PEFT; CUDA at runtime). The base install already pulls `openenv-core` for the FastAPI server; the `gpu` extra lists it again so the GRPO/RL profile is explicit.
 
 ```bash
 uv sync --extra gpu
 # or, with dev tools:  uv sync --extra dev --extra gpu
 ```
 
-If you use plain `pip` instead: `pip install -e ".[gpu]"` or `pip install unsloth` after the base install.
+If you use plain `pip` instead: `pip install -e ".[gpu]"` (pulls `openenv-core`, `unsloth`, TRL, PEFT, bitsandbytes).
 
 `python-dotenv` is a direct dependency: `scripts/train_grpo.py` loads `.env` automatically.
 

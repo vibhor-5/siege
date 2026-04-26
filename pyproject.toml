@@ -43,6 +43,8 @@ dev = [
     "httpx>=0.27.0",
 ]
 gpu = [
+    # OpenEnv (HTTP env server + EnvClient) — required for train_grpo talking to the arena
+    "openenv-core>=0.2.3",
     # GRPO + Unsloth LoRA (requires CUDA for training; `uv sync --extra gpu`)
     "unsloth",
     "trl>=0.9.0",
