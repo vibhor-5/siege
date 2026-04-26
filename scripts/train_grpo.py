@@ -598,6 +598,18 @@ def _print_summary(generation: int, red_path: str, blue_path: str, red_metrics: 
 
 
 def main() -> None:
+    if sys.version_info >= (3, 14):
+        console.print(
+            f"[red]train_grpo needs Python 3.10–3.13 (Unsloth GRPO). "
+            f"This interpreter is {sys.version.split()[0]!r}\n{sys.executable}\n\n"
+            "Recreate the venv with 3.12, e.g.:\n"
+            "  uv python install 3.12\n"
+            "  rm -rf .venv unsloth_compiled_cache /tmp/unsloth_compiled_cache\n"
+            "  uv venv && uv sync --extra gpu\n"
+            "(The repo has a .python-version file so `uv venv` prefers 3.12.)[/red]"
+        )
+        raise SystemExit(1)
+
     _configure_auth_tokens()
     output_dir = Path(os.getenv("SIEGE_OUTPUT_DIR", "./outputs/grpo"))
     output_dir.mkdir(parents=True, exist_ok=True)

@@ -10,8 +10,12 @@ the same script runs on RunPod, Colab, and local GPU without changes.
 from __future__ import annotations
 
 import dataclasses
+import importlib
 import os
+import shutil
 import sys
+import warnings
+from pathlib import Path
 from typing import Optional
 
 import torch
@@ -130,6 +134,49 @@ def _patch_torch() -> None:
             setattr(torch, name, fb)
 
 
+def _unsloth_compile_cache_paths() -> list[Path]:
+    """Locations Unsloth uses for TRL/GRPO trainer rewrites (see unsloth_zoo.compiler)."""
+    return [
+        Path.cwd() / "unsloth_compiled_cache",
+        Path("/tmp/unsloth_compiled_cache"),
+    ]
+
+
+def _clear_unsloth_compile_caches() -> list[str]:
+    """Remove on-disk Unsloth compile outputs. Returns list of removed paths (as strings)."""
+    removed: list[str] = []
+    for p in _unsloth_compile_cache_paths():
+        if not p.is_dir():
+            continue
+        try:
+            shutil.rmtree(p)
+            removed.append(str(p))
+        except OSError:
+            shutil.rmtree(p, ignore_errors=True)
+            if not p.exists():
+                removed.append(str(p))
+    return removed
+
+
+def _evict_unsloth_from_sys_modules() -> None:
+    """Drop half-imported unsloth* modules so a retry can re-run patches."""
+    for k in [m for m in list(sys.modules) if m == "unsloth" or m.startswith("unsloth_") or m.startswith("unsloth.")]:
+        del sys.modules[k]
+    importlib.invalidate_caches()
+
+
+def _is_unsloth_grpo_compile_failure(exc: BaseException) -> bool:
+    """True when Unsloth’s TRL/GRPO trainer rewrite left bad generated code (often after Py 3.14)."""
+    msg = f"{type(exc).__name__}: {exc!s}"
+    if isinstance(exc, (SyntaxError, RuntimeError, ImportError)):
+        return (
+            "UnslothGRPO" in msg
+            or "Direct module loading failed" in msg
+            or "invalid syntax" in msg.lower()
+        )
+    return False
+
+
 def load_agent_model(cfg: Optional[UnslothConfig] = None):
     """Load small LLM agent model with Unsloth 4-bit LoRA.
 
@@ -145,18 +192,39 @@ def load_agent_model(cfg: Optional[UnslothConfig] = None):
             "UnslothGRPOTrainer can raise SyntaxError). Use Python 3.10–3.13, e.g.:\n"
             "  uv python install 3.12\n"
             "  rm -rf .venv && uv venv --python 3.12 && uv sync --extra gpu\n"
+            "Add a .python-version file with 3.12 or use: UV_PYTHON=3.12 uv sync --extra gpu\n"
             "If you only changed Python after a failed run, also remove: "
             "unsloth_compiled_cache/ and /tmp/unsloth_compiled_cache"
         ) from None
 
-    try:
-        from unsloth import FastLanguageModel  # noqa: PLC0415
-    except ModuleNotFoundError as e:
-        raise ModuleNotFoundError(
-            "unsloth is required for GRPO training. Install with:\n"
-            "  uv sync --extra gpu\n"
-            "or: pip install unsloth"
-        ) from e
+    _flm: type | None = None
+    for attempt in (1, 2):
+        try:
+            from unsloth import FastLanguageModel as _Flm  # noqa: PLC0415
+
+            _flm = _Flm
+            break
+        except ModuleNotFoundError as e:
+            raise ModuleNotFoundError(
+                "unsloth is required for GRPO training. Install with:\n"
+                "  uv sync --extra gpu\n"
+                "or: pip install unsloth"
+            ) from e
+        except Exception as e:
+            if attempt == 1 and _is_unsloth_grpo_compile_failure(e):
+                removed = _clear_unsloth_compile_caches()
+                _evict_unsloth_from_sys_modules()
+                warnings.warn(
+                    "Unsloth GRPO trainer compile failed; cleared compile caches and retrying import once. "
+                    f"python={sys.version.split()[0]} {sys.executable!r} removed={removed!r}",
+                    UserWarning,
+                    stacklevel=2,
+                )
+                continue
+            raise
+    if _flm is None:  # pragma: no cover
+        raise RuntimeError("unsloth import: internal state (all retries failed)")
+    FastLanguageModel = _flm
 
     model, tokenizer = FastLanguageModel.from_pretrained(
         model_name=c.agent_model_id,
