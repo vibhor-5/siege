@@ -24,7 +24,20 @@ from openenv.core.env_server import create_fastapi_app
 
 from models import InterpArenaAction, InterpArenaObservation
 from server.interp_arena_environment import InterpArenaEnvironment
-from server.web_playground import create_arena_web_interface_app
+
+# Prefer arena-specific Gradio UI when present; otherwise OpenEnv default (so clones work
+# without server/web_playground.py, e.g. before that file was added).
+try:
+    from server.web_playground import create_arena_web_interface_app
+except ModuleNotFoundError:
+    from openenv.core.env_server import create_web_interface_app as _openenv_web_app
+
+    if _openenv_web_app is None:
+        sys.exit(
+            "ENABLE_WEB_INTERFACE=true requires Gradio. Install `gradio` (or use the default "
+            "deps from `uv sync`) or add `server/web_playground.py` from the repo."
+        )
+    create_arena_web_interface_app = _openenv_web_app
 
 # OpenEnv expects the environment *class* (or factory), not an instance—
 # the HTTP server instantiates it per its own lifecycle.
