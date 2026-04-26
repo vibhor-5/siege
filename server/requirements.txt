@@ -1,13 +1,19 @@
+# Pinned to match the dev environment (see repo uv.lock). A loose
+# `transformers` here often resolves to 5.x while transformer-lens 3.x is
+# tested with 4.5x; that can make lazy imports like BertForPreTraining fail at
+# runtime with: "Could not import module 'BertForPreTraining'".
 openenv-core>=0.2.3
 fastapi>=0.104.0
 uvicorn>=0.24.0
-transformer-lens>=2.0.0
+transformer-lens==3.0.0
+transformers==4.56.2
 torch>=2.1.0
-transformers>=4.40.0
 accelerate>=0.27.0
 datasets>=2.18.0
 wandb>=0.16.0
 omegaconf>=2.3.0
 rich>=13.7.0
-numpy>=1.26.0
+numpy>=1.26.0,<2.5
+huggingface-hub>=0.20.0
+safetensors>=0.4.0
 tqdm>=4.66.0
