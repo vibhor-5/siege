@@ -11,11 +11,11 @@ dependencies = [
     "openenv-core>=0.2.3",
     "fastapi>=0.104.0",
     "uvicorn>=0.24.0",
-    # Mechanistic interpretability
-    "transformer-lens>=2.0.0",
+    # Mechanistic interpretability (keep in sync with server/requirements.txt; 5.x breaks TL lazy imports)
+    "transformer-lens==3.0.0",
+    "transformers==4.56.2",
     # ML
     "torch>=2.1.0",
-    "transformers>=4.40.0",
     "accelerate>=0.27.0",
     "datasets>=2.18.0",
     # Logging & config

@@ -115,7 +115,7 @@ If you use plain `pip` instead: `pip install -e ".[gpu]"` (pulls `openenv-core`,
 
 **TRL / mergekit:** `train_grpo` uses **TRL 0.26.x**. If you ever **`pip install mergekit`**, TRL will detect it and import it from `merge_model_callback`; **mergekit 0.1.4** then often crashes at import on **Pydantic 2.11+** (`torch.Tensor` schema errors). **GRPO does not need mergekit** — run **`uv pip uninstall mergekit`** (or `pip uninstall mergekit`) before training. The training script fails fast with a clear message if `mergekit` is present (override: `SIEGE_ALLOW_MERGEKIT=1`, rarely useful).
 
-**Arena server / `BertForPreTraining`:** If `reset` over OpenEnv fails with *Could not import module 'BertForPreTraining'*, the **server** is usually on a different **`transformers`** / **`transformer-lens`** combo than the repo (a loose `pip install` in Docker often pulls **transformers 5.x**). Reinstall the arena with **`server/requirements.txt`**, which pins **`transformers==4.56.2`** and **`transformer-lens==3.0.0`**, or run **`uv sync`** in the same environment for both client and `uvicorn`. In the same container, try **`pip install 'transformers==4.56.2' 'transformer-lens==3.0.0' --force-reinstall`** and restart the server.
+**Arena server / `BertForPreTraining`:** If `reset` over OpenEnv fails with *Could not import module 'BertForPreTraining'*, the **server** is usually a **different Python** than the one from **`uv run`** (for example, plain `uvicorn` on your `PATH` instead of the project `.venv`). The repo pins **`transformers==4.56.2`** and **`transformer-lens==3.0.0`** in `pyproject.toml` / `server/requirements.txt`. **Start the arena with `uv run uvicorn …`** (see step 3 below). In the same container you can also run **`pip install -r server/requirements.txt --force-reinstall`** in the environment that actually runs `uvicorn`, then restart the server.
 
 ### 2. Configure secrets and logging (optional)
 
@@ -139,8 +139,10 @@ You can also `export` these in the shell before running; `.env` is for convenien
 The GRPO script expects `/health`, `/reset`, and `/step` on **`SIEGE_ENV_URL`** (default `http://localhost:8000`).
 
 ```bash
-uvicorn server.app:app --host 0.0.0.0 --port 8000
+uv run uvicorn server.app:app --host 0.0.0.0 --port 8000
 ```
+
+Use the same venv as training (`uv run`); a global `uvicorn` often misses the repo pins and breaks transformer-lens on the first `reset`. Equivalent: `uv run server` (see `[project.scripts]` in `pyproject.toml`).
 
 ### 4. Run training (terminal 2)
 

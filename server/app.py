@@ -1,6 +1,20 @@
 """FastAPI server entry point for Interpretability Arena."""
 
 import os
+import sys
+
+# transformer-lens imports this at load time; a mismatched transformers (e.g. 5.x) fails on first
+# reset. Fail here with a clear fix if the *uvicorn* interpreter is not the project venv.
+try:
+    from transformers import BertForPreTraining  # noqa: F401
+except Exception as e:
+    sys.exit(
+        "Arena server: could not import transformers' BertForPreTraining (required by transformer-lens). "
+        "The process running uvicorn must use the same env as `uv run` (see README section 3). "
+        "Try:  uv run uvicorn server.app:app --host 0.0.0.0 --port 8000  "
+        "or:  pip install -r server/requirements.txt --force-reinstall  then restart. "
+        f"Original: {e}"
+    )
 
 from openenv.core.env_server import create_fastapi_app, create_web_interface_app
 
